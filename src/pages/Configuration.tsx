@@ -4,6 +4,7 @@ import { LLMConfiguration } from '@/components/configuration/LLMConfiguration';
 import { FileSystemConfig } from '@/components/configuration/FileSystemConfig';
 import { TerminalConfig } from '@/components/configuration/TerminalConfig';
 import { VersionControlConfig } from '@/components/configuration/VersionControlConfig';
+import { DatabaseConfig } from '@/components/configuration/DatabaseConfig';
 
 const Configuration = () => {
   return (
@@ -13,11 +14,12 @@ const Configuration = () => {
       </h1>
       
       <Tabs defaultValue="llm" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="llm">LLM Providers</TabsTrigger>
           <TabsTrigger value="filesystem">File System</TabsTrigger>
           <TabsTrigger value="terminal">Terminal</TabsTrigger>
           <TabsTrigger value="vcs">Version Control</TabsTrigger>
+          <TabsTrigger value="database">Database</TabsTrigger>
         </TabsList>
         
         <TabsContent value="llm">
@@ -34,6 +36,10 @@ const Configuration = () => {
         
         <TabsContent value="vcs">
           <VersionControlConfig />
+        </TabsContent>
+
+        <TabsContent value="database">
+          <DatabaseConfig />
         </TabsContent>
       </Tabs>
     </div>
