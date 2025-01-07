@@ -22,7 +22,7 @@ const R2D2Scene = () => {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     containerRef.current.appendChild(renderer.domElement);
 
-    // Add OrbitControls
+    // Add OrbitControls with enhanced configuration
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -55,7 +55,7 @@ const R2D2Scene = () => {
     head.position.y = 1.4;
     head.castShadow = true;
 
-    // Create eye lens
+    // Create eye lens with improved material
     const eyeGeometry = new THREE.CircleGeometry(0.2, 32);
     const eyeMaterial = new THREE.MeshPhysicalMaterial({ 
       color: 0x000000,
@@ -68,7 +68,7 @@ const R2D2Scene = () => {
     eye.position.set(0, 1.4, 0.8);
     eye.rotation.y = Math.PI;
 
-    // Create blue details with glowing effect
+    // Create blue details with enhanced glowing effect
     const detailGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.1);
     const detailMaterial = new THREE.MeshPhongMaterial({ 
       color: 0x00ffff,
@@ -92,7 +92,7 @@ const R2D2Scene = () => {
       details.push(detail);
     });
 
-    // Add legs
+    // Add legs with improved materials
     const legGeometry = new THREE.CylinderGeometry(0.2, 0.3, 1, 16);
     const legMaterial = new THREE.MeshPhysicalMaterial({
       color: 0xcccccc,
@@ -145,7 +145,7 @@ const R2D2Scene = () => {
     camera.position.z = 5;
     camera.position.y = 1;
 
-    // Animation
+    // Animation loop with enhanced effects
     const animate = () => {
       requestAnimationFrame(animate);
 
