@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useProject } from '@/contexts/ProjectContext';
 import { QuickAccess } from '@/components/researcher/QuickAccess';
 import { AnalysisTools } from '@/components/researcher/AnalysisTools';
+import { MiniBrowser } from '@/components/researcher/MiniBrowser';
 
 const AIResearcher = () => {
   const { toast } = useToast();
@@ -40,18 +41,22 @@ const AIResearcher = () => {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <AnalysisTools tools={projectTools[selectedProject.id as keyof typeof projectTools] || projectTools.current} />
-        </Card>
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <Card className="p-6">
+            <AnalysisTools tools={projectTools[selectedProject.id as keyof typeof projectTools] || projectTools.current} />
+          </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Database className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Quick Access</h2>
-          </div>
-          <QuickAccess />
-        </Card>
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Database className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-semibold">Quick Access</h2>
+            </div>
+            <QuickAccess />
+          </Card>
+        </div>
+
+        <MiniBrowser className="lg:row-span-2" />
       </div>
 
       <Card className="mt-6 p-6">
