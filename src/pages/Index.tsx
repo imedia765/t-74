@@ -1,189 +1,213 @@
-import { Database, Server, Network, Users, Code, Globe } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import Navbar from "@/components/Navbar";
-import FeatureCard from "@/components/FeatureCard";
+import React, { useState } from 'react';
+import { CodeEditor } from '@/components/CodeEditor';
+import { Preview } from '@/components/Preview';
+import { useToast } from '@/components/ui/use-toast';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/AppSidebar';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { MessageSquare, History, GitBranch, GitCommit, Cpu, BarChart } from 'lucide-react';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import BuildInfoCard from '@/components/BuildInfoCard';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 
 const Index = () => {
+  const [code, setCode] = useState('// Your generated code will appear here');
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('gpt-4o');
+  const { toast } = useToast();
+
+  // Mock repository history data
+  const repoHistory = [
+    { type: 'commit', message: 'Add new features', timestamp: '2 hours ago' },
+    { type: 'branch', name: 'feature/chat', timestamp: '3 hours ago' },
+    { type: 'commit', message: 'Initial setup', timestamp: '1 day ago' }
+  ];
+
+  // Mock chat messages
+  const chatMessages = [
+    { sender: 'AI', message: 'How can I help you today?', timestamp: '2m ago' },
+    { sender: 'User', message: 'Can you explain this code?', timestamp: '1m ago' }
+  ];
+
+  // Mock code generation history
+  const codeHistory = [
+    { id: 1, snippet: 'function hello() {...}', timestamp: '1h ago', description: 'Added greeting function' },
+    { id: 2, snippet: 'const app = express();', timestamp: '2h ago', description: 'Express server setup' }
+  ];
+
+  // Mock code metrics
+  const codeMetrics = {
+    quality: 85,
+    performance: 90,
+    complexity: 'Low',
+    lines: 124
+  };
+
+  const renderRepoHistory = () => (
+    <div className="space-y-2">
+      {repoHistory.map((item, index) => (
+        <div key={index} className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded">
+          {item.type === 'commit' ? (
+            <GitCommit className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <GitBranch className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-sm flex-1">{item.type === 'commit' ? item.message : item.name}</span>
+          <span className="text-xs text-muted-foreground">{item.timestamp}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderChat = () => (
+    <div className="space-y-2">
+      {chatMessages.map((msg, index) => (
+        <div key={index} className={`flex gap-2 p-2 rounded ${msg.sender === 'AI' ? 'bg-accent/10' : ''}`}>
+          <MessageSquare className="h-4 w-4 text-muted-foreground mt-1" />
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm font-medium">{msg.sender}</span>
+              <span className="text-xs text-muted-foreground">{msg.timestamp}</span>
+            </div>
+            <p className="text-sm">{msg.message}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderCodeHistory = () => (
+    <div className="space-y-2">
+      {codeHistory.map((item) => (
+        <div key={item.id} className="p-2 hover:bg-accent/10 rounded">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-medium">{item.description}</span>
+            <span className="text-xs text-muted-foreground">{item.timestamp}</span>
+          </div>
+          <code className="text-xs block bg-muted p-2 rounded">{item.snippet}</code>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderCodeMetrics = () => (
+    <div className="space-y-4 p-4 bg-card rounded-lg border">
+      <h3 className="text-sm font-semibold flex items-center gap-2">
+        <BarChart className="h-4 w-4" />
+        Code Metrics
+      </h3>
+      <div className="space-y-2">
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span>Code Quality</span>
+            <span>{codeMetrics.quality}%</span>
+          </div>
+          <Progress value={codeMetrics.quality} className="h-2" />
+        </div>
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span>Performance</span>
+            <span>{codeMetrics.performance}%</span>
+          </div>
+          <Progress value={codeMetrics.performance} className="h-2" />
+        </div>
+        <div className="flex justify-between text-sm">
+          <span>Complexity</span>
+          <span>{codeMetrics.complexity}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span>Lines of Code</span>
+          <span>{codeMetrics.lines}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      
-      {/* Hero Section */}
-      <section className="pt-32 pb-24 bg-hero-gradient">
-        <div className="container mx-auto text-center text-white">
-          <h1 className="text-5xl md:text-7xl font-mono font-bold mb-6">
-            OPEN SOURCE
-            <br />
-            DATABASE
-          </h1>
-          <p className="text-xl md:text-2xl max-w-2xl mx-auto mb-8 text-blue-50">
-            The leading cloud database service on the market, with unmatched data
-            distribution and mobility across AWS, Azure, and Google Cloud.
-          </p>
-          <div className="flex justify-center space-x-4">
-            <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50">
-              Get Started
-            </Button>
-            <Button size="lg" variant="outline" className="text-white border-white bg-transparent hover:bg-white/10">
-              Documentation
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-24 bg-white">
-        <div className="container mx-auto">
-          <h2 className="text-3xl font-mono font-bold mb-12 text-center text-blue-600">
-            /CAPABILITIES
-          </h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <FeatureCard
-              title="Clustering"
-              description="Horizontal scalability with built-in auto-sharding to millions of nodes with automatic, synchronous replication for high availability."
-              icon={Database}
-            />
-            <FeatureCard
-              title="Persistence"
-              description="Keeps the dataset in memory for fast access, but can persist writes to permanent storage to survive reboots and system failures."
-              icon={Server}
-            />
-            <FeatureCard
-              title="Data structures"
-              description="Well-known as a 'data structure server', supports lists, sets, sorted sets, hashes, bit arrays and more. Fast and efficient."
-              icon={Network}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Community Section */}
-      <section id="community" className="py-24 bg-blue-600">
-        <div className="container mx-auto text-center">
-          <h2 className="text-3xl font-mono font-bold text-white mb-12">
-            /COMMUNITY
-          </h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="p-6 rounded-lg bg-white/10 backdrop-blur">
-              <Users className="w-12 h-12 text-white mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">50K+</h3>
-              <p className="text-blue-100">Active Developers</p>
-            </div>
-            <div className="p-6 rounded-lg bg-white/10 backdrop-blur">
-              <Code className="w-12 h-12 text-white mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">1M+</h3>
-              <p className="text-blue-100">Lines of Code</p>
-            </div>
-            <div className="p-6 rounded-lg bg-white/10 backdrop-blur">
-              <Globe className="w-12 h-12 text-white mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">100+</h3>
-              <p className="text-blue-100">Countries</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Integration Section */}
-      <section id="integrate" className="py-24 bg-white">
-        <div className="container mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl font-mono font-bold mb-6 text-blue-600">/INTEGRATE</h2>
-              <p className="text-lg text-blue-600/80 mb-8">
-                Seamlessly integrate with your existing tech stack using our comprehensive API and extensive documentation. Support for multiple programming languages and frameworks.
-              </p>
-              <div className="space-y-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  <p className="text-blue-600">RESTful API endpoints</p>
+    <div className="h-screen flex">
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
+          <AppSidebar />
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={70} minSize={30}>
+              <main className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+                    AI Code Generator
+                  </h1>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-4 w-4 text-muted-foreground" />
+                      <Select value={selectedModel} onValueChange={setSelectedModel}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Select AI Model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gpt-4o">GPT-4 Optimized</SelectItem>
+                          <SelectItem value="gpt-4o-mini">GPT-4 Mini</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  <p className="text-blue-600">WebSocket support</p>
+                <ResizablePanelGroup direction="vertical">
+                  <ResizablePanel defaultSize={50}>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-semibold">Generated Code</h2>
+                      <CodeEditor code={code} onChange={setCode} />
+                    </div>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={50}>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-semibold">Preview</h2>
+                      <Preview content={code} />
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </main>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={30} minSize={20}>
+              <div className="h-full flex flex-col">
+                <div className="flex-1 border rounded-lg border-border mb-4">
+                  <div className="p-4 border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      <h2 className="text-sm font-semibold">Code Generation History</h2>
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[calc(25vh-100px)]">
+                    <div className="p-2">
+                      {renderCodeHistory()}
+                    </div>
+                  </ScrollArea>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  <p className="text-blue-600">GraphQL integration</p>
+                <div className="flex-1 border rounded-lg border-border mb-4">
+                  <div className="p-4 border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      <h2 className="text-sm font-semibold">Chat</h2>
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[calc(25vh-100px)]">
+                    <div className="p-2">
+                      {renderChat()}
+                    </div>
+                  </ScrollArea>
+                </div>
+                <div className="flex-1 border rounded-lg border-border mb-4">
+                  {renderCodeMetrics()}
+                </div>
+                <div className="flex-1 border rounded-lg border-border">
+                  <BuildInfoCard />
                 </div>
               </div>
-            </div>
-            <div className="relative">
-              <img
-                src="https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7"
-                alt="Code on screen"
-                className="rounded-lg shadow-2xl"
-              />
-            </div>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
-      </section>
-
-      {/* Team Section */}
-      <section id="team" className="py-24 bg-blue-600">
-        <div className="container mx-auto text-center">
-          <h2 className="text-3xl font-mono font-bold mb-12 text-white">/TEAM</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="p-6">
-              <img
-                src="https://images.unsplash.com/photo-1605810230434-7631ac76ec81"
-                alt="Team collaboration"
-                className="w-full h-48 object-cover rounded-lg mb-4"
-              />
-              <h3 className="text-lg font-semibold mb-2 text-white">Enterprise Support</h3>
-              <p className="text-blue-100">24/7 dedicated team support</p>
-            </div>
-            <div className="p-6">
-              <img
-                src="https://images.unsplash.com/photo-1485827404703-89b55fcc595e"
-                alt="Robot"
-                className="w-full h-48 object-cover rounded-lg mb-4"
-              />
-              <h3 className="text-lg font-semibold mb-2 text-white">AI Integration</h3>
-              <p className="text-blue-100">Advanced ML capabilities</p>
-            </div>
-            <div className="p-6">
-              <img
-                src="https://images.unsplash.com/photo-1483058712412-4245e9b90334"
-                alt="Technology"
-                className="w-full h-48 object-cover rounded-lg mb-4"
-              />
-              <h3 className="text-lg font-semibold mb-2 text-white">Modern Stack</h3>
-              <p className="text-blue-100">Latest tech implementation</p>
-            </div>
-            <div className="p-6">
-              <img
-                src="https://images.unsplash.com/photo-1721322800607-8c38375eef04"
-                alt="Smart living"
-                className="w-full h-48 object-cover rounded-lg mb-4"
-              />
-              <h3 className="text-lg font-semibold mb-2 text-white">Smart Solutions</h3>
-              <p className="text-blue-100">Intelligent automation</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-blue-100 py-12">
-        <div className="container mx-auto">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-blue-600">
-              © 2024 MaxData Inc. All rights reserved.
-            </p>
-            <div className="flex space-x-6">
-              <a href="#" className="text-blue-600 hover:text-blue-700">
-                Twitter
-              </a>
-              <a href="#" className="text-blue-600 hover:text-blue-700">
-                GitHub
-              </a>
-              <a href="#" className="text-blue-600 hover:text-blue-700">
-                Discord
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      </SidebarProvider>
     </div>
   );
 };
