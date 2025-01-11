@@ -60,6 +60,33 @@ export type Database = {
         }
         Relationships: []
       }
+      web_metrics: {
+        Row: {
+          created_at: string | null
+          id: string
+          metric_name: string
+          metric_value: string
+          updated_at: string | null
+          url: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metric_name: string
+          metric_value: string
+          updated_at?: string | null
+          url: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metric_name?: string
+          metric_value?: string
+          updated_at?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
