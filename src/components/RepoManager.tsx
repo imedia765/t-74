@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { GitBranch, GitCommit, Star, History, Tag, AlertTriangle, Trash2, Edit2, RefreshCw, Terminal } from "lucide-react";
+import { GitBranch, GitCommit, Star, History, Tag, AlertTriangle, Trash2, Edit2, RefreshCw, Terminal, CheckCircle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,7 +43,7 @@ export function RepoManager() {
   const [repoLabel, setRepoLabel] = useState("");
   const [pushType, setPushType] = useState("regular");
   const [selectedSourceRepo, setSelectedSourceRepo] = useState("");
-  const [selectedTargetRepo, setSelectedTargetRepo] = useState("");
+  const [selectedTargetRepos, setSelectedTargetRepos] = useState<string[]>([]);
   const [lastAction, setLastAction] = useState<string>("");
   const [showMasterWarning, setShowMasterWarning] = useState(false);
   const [confirmationStep, setConfirmationStep] = useState(0);
@@ -55,6 +55,11 @@ export function RepoManager() {
 
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [showConsole, setShowConsole] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<{
+    checking: boolean;
+    success?: boolean;
+    message?: string;
+  }>({ checking: false });
 
   const addConsoleLog = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
     setConsoleLogs(prev => [...prev, {
@@ -85,6 +90,57 @@ export function RepoManager() {
         description: "Failed to fetch repositories",
         variant: "destructive",
       });
+    }
+  };
+
+  const verifyPushSuccess = async (sourceRepoId: string, targetRepoIds: string[]) => {
+    try {
+      setVerificationStatus({ checking: true });
+      addConsoleLog('Verifying push success...', 'info');
+
+      const sourceDetails = repositories.find(r => r.id === sourceRepoId);
+      if (!sourceDetails?.last_commit) {
+        throw new Error('Source commit information not available');
+      }
+
+      // Refresh target repos to get latest commit info
+      for (const targetId of targetRepoIds) {
+        await refreshLastCommit(targetId);
+      }
+
+      // Re-fetch repositories to get updated data
+      await fetchRepositories();
+
+      // Verify commits match
+      const targetRepos = repositories.filter(r => targetRepoIds.includes(r.id));
+      const successfulTargets = targetRepos.filter(
+        target => target.last_commit === sourceDetails.last_commit
+      );
+
+      const allSuccess = successfulTargets.length === targetRepoIds.length;
+      const timestamp = new Date().toLocaleTimeString();
+
+      setVerificationStatus({
+        checking: false,
+        success: allSuccess,
+        message: allSuccess 
+          ? `Push verified successful at ${timestamp}` 
+          : `Push verification failed at ${timestamp}. Some repositories may not be in sync.`
+      });
+
+      addConsoleLog(
+        allSuccess ? 'Push verification successful' : 'Push verification failed',
+        allSuccess ? 'success' : 'error'
+      );
+
+    } catch (error) {
+      console.error('Verification error:', error);
+      setVerificationStatus({
+        checking: false,
+        success: false,
+        message: `Verification failed: ${error.message}`
+      });
+      addConsoleLog(`Push verification error: ${error.message}`, 'error');
     }
   };
 
@@ -235,46 +291,52 @@ export function RepoManager() {
   };
 
   const handlePushRepo = async () => {
-    if (!selectedSourceRepo || !selectedTargetRepo) {
+    if (!selectedSourceRepo || selectedTargetRepos.length === 0) {
       toast({
         title: "Error",
-        description: "Please select both source and target repositories",
+        description: "Please select source and at least one target repository",
         variant: "destructive",
       });
       return;
     }
 
-    const targetRepo = repositories.find(r => r.id === selectedTargetRepo);
+    const hasMasterTarget = selectedTargetRepos.some(id => 
+      repositories.find(r => r.id === id)?.is_master
+    );
     
-    if (targetRepo?.is_master && confirmationStep === 0) {
+    if (hasMasterTarget && confirmationStep === 0) {
       setShowMasterWarning(true);
       return;
     }
 
     try {
       setIsLoading(true);
-      addConsoleLog(`Starting ${pushType} push operation...`, 'info');
+      addConsoleLog(`Starting ${pushType} push operation to multiple targets...`, 'info');
       
-      const { data, error } = await supabase.functions.invoke('git-operations', {
-        body: {
-          type: 'push',
-          sourceRepoId: selectedSourceRepo,
-          targetRepoId: selectedTargetRepo,
-          pushType
-        }
-      });
+      for (const targetId of selectedTargetRepos) {
+        const { error } = await supabase.functions.invoke('git-operations', {
+          body: {
+            type: 'push',
+            sourceRepoId: selectedSourceRepo,
+            targetRepoId: targetId,
+            pushType
+          }
+        });
 
-      if (error) {
-        addConsoleLog(`Error: ${error.message}`, 'error');
-        throw error;
+        if (error) throw error;
       }
 
       const sourceRepo = repositories.find(r => r.id === selectedSourceRepo);
-      const actionMessage = `Pushed from ${sourceRepo?.nickname || sourceRepo?.url} to ${targetRepo?.nickname || targetRepo?.url} at ${new Date().toLocaleTimeString()}`;
+      const targetRepos = repositories.filter(r => selectedTargetRepos.includes(r.id));
+      const actionMessage = `Pushed from ${sourceRepo?.nickname || sourceRepo?.url} to ${targetRepos.length} repositories at ${new Date().toLocaleTimeString()}`;
+      
       setLastAction(actionMessage);
       addConsoleLog(actionMessage, 'success');
       
-      await fetchRepositories(); // Refresh repositories list
+      // Start verification process
+      await verifyPushSuccess(selectedSourceRepo, selectedTargetRepos);
+      
+      await fetchRepositories();
       
       toast({
         title: "Success",
@@ -382,12 +444,16 @@ export function RepoManager() {
       <div className="space-y-4 pt-4 border-t border-border/50">
         <h3 className="text-lg font-medium">Push Repository</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Source Repository</label>
+            <label className="text-sm font-medium">Source Repository (Select One)</label>
             <Select 
               value={selectedSourceRepo} 
-              onValueChange={setSelectedSourceRepo}
+              onValueChange={(value) => {
+                setSelectedSourceRepo(value);
+                // Clear selected targets when source changes
+                setSelectedTargetRepos([]);
+              }}
               disabled={isLoading}
             >
               <SelectTrigger className="bg-background/50">
@@ -405,24 +471,38 @@ export function RepoManager() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Target Repository</label>
-            <Select 
-              value={selectedTargetRepo} 
-              onValueChange={setSelectedTargetRepo}
-              disabled={isLoading}
-            >
-              <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select target repository" />
-              </SelectTrigger>
-              <SelectContent>
-                {repositories.map(repo => (
-                  <SelectItem key={repo.id} value={repo.id}>
-                    {repo.nickname || repo.url}
-                    {repo.is_master && <Star className="inline h-4 w-4 ml-2 text-red-500" />}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="text-sm font-medium">Target Repositories (Select Multiple)</label>
+            <ScrollArea className="h-40 w-full rounded-md border">
+              <div className="p-4 space-y-2">
+                {repositories
+                  .filter(repo => repo.id !== selectedSourceRepo)
+                  .map(repo => (
+                    <div key={repo.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`target-${repo.id}`}
+                        checked={selectedTargetRepos.includes(repo.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedTargetRepos(prev =>
+                            checked
+                              ? [...prev, repo.id]
+                              : prev.filter(id => id !== repo.id)
+                          );
+                        }}
+                        disabled={isLoading}
+                      />
+                      <label
+                        htmlFor={`target-${repo.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
+                        {repo.nickname || repo.url}
+                        {repo.is_master && (
+                          <Star className="inline h-4 w-4 ml-2 text-red-500" />
+                        )}
+                      </label>
+                    </div>
+                  ))}
+              </div>
+            </ScrollArea>
           </div>
         </div>
 
@@ -447,10 +527,29 @@ export function RepoManager() {
         <Button 
           onClick={handlePushRepo} 
           className="w-full"
-          disabled={isLoading}
+          disabled={isLoading || !selectedSourceRepo || selectedTargetRepos.length === 0}
         >
-          {isLoading ? "Pushing..." : "Push Repository"}
+          {isLoading ? "Pushing..." : `Push to ${selectedTargetRepos.length} Repositories`}
         </Button>
+
+        {verificationStatus.message && (
+          <div className={`p-4 rounded-md ${
+            verificationStatus.checking ? 'bg-blue-500/10 border border-blue-500/20' :
+            verificationStatus.success ? 'bg-green-500/10 border border-green-500/20' :
+            'bg-red-500/10 border border-red-500/20'
+          }`}>
+            <p className="text-sm">
+              {verificationStatus.checking ? (
+                <RefreshCw className="inline-block h-4 w-4 mr-2 animate-spin" />
+              ) : verificationStatus.success ? (
+                <CheckCircle className="inline-block h-4 w-4 mr-2 text-green-500" />
+              ) : (
+                <XCircle className="inline-block h-4 w-4 mr-2 text-red-500" />
+              )}
+              {verificationStatus.message}
+            </p>
+          </div>
+        )}
       </div>
 
       {repositories.length > 0 && (
