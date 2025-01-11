@@ -41,6 +41,23 @@ export function RepoManager() {
     }]);
   };
 
+  const transformRepositoryData = (data: any[]): Repository[] => {
+    return data.map(repo => ({
+      id: repo.id,
+      url: repo.url,
+      name: repo.name,
+      nickname: repo.nickname,
+      is_master: repo.is_master,
+      last_sync: repo.last_sync,
+      status: repo.status,
+      last_commit: repo.last_commit,
+      last_commit_date: repo.last_commit_date,
+      default_branch: repo.default_branch,
+      branches: Array.isArray(repo.branches) ? repo.branches : [],
+      recent_commits: Array.isArray(repo.recent_commits) ? repo.recent_commits : []
+    }));
+  };
+
   useEffect(() => {
     fetchRepositories();
   }, []);
@@ -53,7 +70,9 @@ export function RepoManager() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRepositories(data || []);
+      
+      const transformedData = transformRepositoryData(data || []);
+      setRepositories(transformedData);
     } catch (error) {
       console.error('Error fetching repositories:', error);
       toast({
