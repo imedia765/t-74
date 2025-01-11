@@ -8,6 +8,18 @@ export interface Repository {
   status?: string;
   last_commit?: string;
   last_commit_date?: string;
+  default_branch?: string;
+  branches?: {
+    name: string;
+    protected: boolean;
+    sha: string;
+  }[];
+  recent_commits?: {
+    sha: string;
+    message: string;
+    date: string;
+    author?: string;
+  }[];
 }
 
 export interface ConsoleLog {

@@ -38,6 +38,34 @@ const log = {
   }
 };
 
+const getRepoDetails = async (owner: string, repo: string, octokit: Octokit) => {
+  try {
+    const [repoInfo, branches, lastCommits] = await Promise.all([
+      octokit.rest.repos.get({ owner, repo }),
+      octokit.rest.repos.listBranches({ owner, repo }),
+      octokit.rest.repos.listCommits({ owner, repo, per_page: 5 })
+    ]);
+
+    return {
+      defaultBranch: repoInfo.data.default_branch,
+      branches: branches.data.map(b => ({
+        name: b.name,
+        protected: b.protected,
+        sha: b.commit.sha
+      })),
+      lastCommits: lastCommits.data.map(c => ({
+        sha: c.sha,
+        message: c.commit.message,
+        date: c.commit.author?.date,
+        author: c.commit.author?.name
+      }))
+    };
+  } catch (error) {
+    log.error('Error fetching repository details:', error);
+    throw error;
+  }
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -62,135 +90,58 @@ serve(async (req) => {
       auth: githubToken
     });
 
-    // Helper function to extract owner and repo name from GitHub URL
-    const extractRepoInfo = (url: string) => {
-      const match = url.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
-      if (!match) {
-        throw new Error(`Invalid GitHub URL format: ${url}`);
-      }
-      return { owner: match[1], repo: match[2] };
-    };
-
-    // Helper function to get repository details
-    const getRepoDetails = async (repoId: string) => {
-      const query = `SELECT * FROM repositories WHERE id = $1`;
-      log.sql(query, [repoId]);
-      
-      const { data: repo, error: repoError } = await supabaseClient
-        .from('repositories')
-        .select('*')
-        .eq('id', repoId)
-        .single();
-
-      if (repoError) {
-        log.error('Database error when fetching repository:', repoError);
-        throw repoError;
-      }
-      if (!repo) {
-        log.error('Repository not found:', { repoId });
-        throw new Error(`Repository not found: ${repoId}`);
-      }
-      
-      const { owner, repo: repoName } = extractRepoInfo(repo.url);
-      log.info('Repository details:', { owner, repoName, url: repo.url });
-      return { repo, owner, repoName };
-    };
-
-    // Helper function to get the default branch
-    const getDefaultBranch = async (owner: string, repo: string) => {
-      const { data: repoInfo } = await octokit.rest.repos.get({
-        owner,
-        repo,
-      });
-      return repoInfo.default_branch;
-    };
-
-    // Helper function to ensure branch exists
-    const ensureBranchExists = async (owner: string, repo: string, branch: string, sourceSha: string) => {
-      try {
-        // Try to get the branch
-        const { data: branchData } = await octokit.rest.repos.getBranch({
-          owner,
-          repo,
-          branch,
-        });
-        log.success(`Branch exists: ${branch}`, branchData);
-        return branchData;
-      } catch (error) {
-        if (error.status === 404) {
-          // Branch doesn't exist, create it
-          log.info(`Creating branch ${branch} from ${sourceSha}`);
-          try {
-            await octokit.rest.git.createRef({
-              owner,
-              repo,
-              ref: `refs/heads/${branch}`,
-              sha: sourceSha,
-            });
-            log.success(`Created branch: ${branch}`);
-            return await octokit.rest.repos.getBranch({
-              owner,
-              repo,
-              branch,
-            });
-          } catch (createError) {
-            log.error(`Failed to create branch: ${branch}`, createError);
-            throw createError;
-          }
-        }
-        throw error;
-      }
-    };
-
     if (type === 'getLastCommit') {
-      log.info('Getting last commit for repo:', sourceRepoId);
+      log.info('Getting repository details for:', sourceRepoId);
       
       const { repo, owner, repoName } = await getRepoDetails(sourceRepoId);
       log.success('Found repository:', repo.url);
 
-      const defaultBranch = await getDefaultBranch(owner, repoName);
+      const repoDetails = await getRepoDetails(owner, repoName, octokit);
       
-      const { data: commit } = await octokit.rest.repos.getCommit({
-        owner,
-        repo: repoName,
-        ref: defaultBranch,
-      });
-
-      log.success('Got commit:', commit.sha);
-
       const updateQuery = `
         UPDATE repositories 
         SET last_commit = $1, 
             last_commit_date = $2, 
             last_sync = $3, 
-            status = $4 
-        WHERE id = $5
+            status = $4,
+            default_branch = $5,
+            branches = $6,
+            recent_commits = $7
+        WHERE id = $8
       `;
       
+      const lastCommit = repoDetails.lastCommits[0];
+      
       log.sql(updateQuery, [
-        commit.sha,
-        commit.commit.author?.date,
+        lastCommit.sha,
+        lastCommit.date,
         new Date().toISOString(),
         'synced',
+        repoDetails.defaultBranch,
+        JSON.stringify(repoDetails.branches),
+        JSON.stringify(repoDetails.lastCommits),
         sourceRepoId
       ]);
 
       await supabaseClient
         .from('repositories')
         .update({ 
-          last_commit: commit.sha,
-          last_commit_date: commit.commit.author?.date,
+          last_commit: lastCommit.sha,
+          last_commit_date: lastCommit.date,
           last_sync: new Date().toISOString(),
-          status: 'synced'
+          status: 'synced',
+          default_branch: repoDetails.defaultBranch,
+          branches: repoDetails.branches,
+          recent_commits: repoDetails.lastCommits
         })
         .eq('id', sourceRepoId);
 
       return new Response(
-        JSON.stringify({ success: true, commit }),
+        JSON.stringify({ success: true, details: repoDetails }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
+
     if (type === 'push' && targetRepoId) {
       log.info('Starting push operation');
       
@@ -202,21 +153,18 @@ serve(async (req) => {
         target: targetDetails.repo.url
       });
 
-      // Get source repository info and latest commit
       const sourceDefaultBranch = await getDefaultBranch(sourceDetails.owner, sourceDetails.repoName);
       log.success('Source branch found:', sourceDefaultBranch);
 
       const targetDefaultBranch = await getDefaultBranch(targetDetails.owner, targetDetails.repoName);
       log.success('Target branch found:', targetDefaultBranch);
 
-      // Get source commit
       const { data: sourceCommit } = await octokit.rest.repos.getCommit({
         owner: sourceDetails.owner,
         repo: sourceDetails.repoName,
         ref: sourceDefaultBranch
       });
 
-      // Ensure target branch exists
       await ensureBranchExists(
         targetDetails.owner,
         targetDetails.repoName,
@@ -247,7 +195,6 @@ serve(async (req) => {
           log.success('Regular merge completed');
         }
 
-        // Update repositories status
         const timestamp = new Date().toISOString();
         await supabaseClient
           .from('repositories')
@@ -285,7 +232,6 @@ serve(async (req) => {
   } catch (error) {
     log.error('Error in git-operations function:', error);
     
-    // Enhanced error response
     const errorResponse = {
       success: false,
       error: error.message,
