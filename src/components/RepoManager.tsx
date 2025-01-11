@@ -8,6 +8,7 @@ import { GitBranch, GitCommit, Star, History, Tag, AlertTriangle, Trash2, Edit2,
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
