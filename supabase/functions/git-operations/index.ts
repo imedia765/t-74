@@ -31,20 +31,40 @@ const log = {
   info: (message: string, data?: any) => {
     console.log('\x1b[36m%s\x1b[0m', 'ℹ INFO:', message);
     if (data) console.log(JSON.stringify(data, null, 2));
-  },
-  sql: (query: string, params?: any) => {
-    console.log('\x1b[35m%s\x1b[0m', '🗄 SQL:', query);
-    if (params) console.log('\x1b[35m%s\x1b[0m', '  Params:', JSON.stringify(params, null, 2));
   }
 };
 
-const getRepoDetails = async (owner: string, repo: string, octokit: Octokit) => {
+const parseGitHubUrl = (url: string) => {
   try {
+    const regex = /github\.com\/([^\/]+)\/([^\/\.]+)/;
+    const match = url.match(regex);
+    
+    if (!match) {
+      throw new Error(`Invalid GitHub URL: ${url}`);
+    }
+
+    return {
+      owner: match[1],
+      repo: match[2].replace('.git', '')
+    };
+  } catch (error) {
+    log.error('Error parsing GitHub URL:', error);
+    throw error;
+  }
+};
+
+const getRepoDetails = async (url: string, octokit: Octokit) => {
+  try {
+    const { owner, repo } = parseGitHubUrl(url);
+    log.info('Fetching details for repository:', { owner, repo });
+
     const [repoInfo, branches, lastCommits] = await Promise.all([
       octokit.rest.repos.get({ owner, repo }),
       octokit.rest.repos.listBranches({ owner, repo }),
       octokit.rest.repos.listCommits({ owner, repo, per_page: 5 })
     ]);
+
+    log.success('Repository details fetched successfully');
 
     return {
       defaultBranch: repoInfo.data.default_branch,
@@ -67,18 +87,19 @@ const getRepoDetails = async (owner: string, repo: string, octokit: Octokit) => 
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { type, sourceRepoId, targetRepoId, pushType } = await req.json();
-    log.info('Received operation:', { type, sourceRepoId, targetRepoId, pushType });
+    const { type, sourceRepoId } = await req.json();
+    log.info('Received operation:', { type, sourceRepoId });
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
     const githubToken = Deno.env.get('GITHUB_ACCESS_TOKEN');
     if (!githubToken) {
@@ -93,39 +114,31 @@ serve(async (req) => {
     if (type === 'getLastCommit') {
       log.info('Getting repository details for:', sourceRepoId);
       
-      const { repo, owner, repoName } = await getRepoDetails(sourceRepoId);
-      log.success('Found repository:', repo.url);
+      // Fetch the repository URL from the database
+      const { data: repoData, error: repoError } = await supabaseClient
+        .from('repositories')
+        .select('url')
+        .eq('id', sourceRepoId)
+        .single();
 
-      const repoDetails = await getRepoDetails(owner, repoName, octokit);
-      
-      const updateQuery = `
-        UPDATE repositories 
-        SET last_commit = $1, 
-            last_commit_date = $2, 
-            last_sync = $3, 
-            status = $4,
-            default_branch = $5,
-            branches = $6,
-            recent_commits = $7
-        WHERE id = $8
-      `;
-      
+      if (repoError) {
+        log.error('Error fetching repository:', repoError);
+        throw repoError;
+      }
+
+      if (!repoData?.url) {
+        throw new Error('Repository URL not found');
+      }
+
+      const repoDetails = await getRepoDetails(repoData.url, octokit);
+      log.success('Repository details fetched:', repoDetails);
+
       const lastCommit = repoDetails.lastCommits[0];
       
-      log.sql(updateQuery, [
-        lastCommit.sha,
-        lastCommit.date,
-        new Date().toISOString(),
-        'synced',
-        repoDetails.defaultBranch,
-        JSON.stringify(repoDetails.branches),
-        JSON.stringify(repoDetails.lastCommits),
-        sourceRepoId
-      ]);
-
-      await supabaseClient
+      // Update the repository with the new information
+      const { error: updateError } = await supabaseClient
         .from('repositories')
-        .update({ 
+        .update({
           last_commit: lastCommit.sha,
           last_commit_date: lastCommit.date,
           last_sync: new Date().toISOString(),
@@ -136,88 +149,25 @@ serve(async (req) => {
         })
         .eq('id', sourceRepoId);
 
-      return new Response(
-        JSON.stringify({ success: true, details: repoDetails }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (type === 'push' && targetRepoId) {
-      log.info('Starting push operation');
-      
-      const sourceDetails = await getRepoDetails(sourceRepoId);
-      const targetDetails = await getRepoDetails(targetRepoId);
-
-      log.info('Processing repositories:', {
-        source: sourceDetails.repo.url,
-        target: targetDetails.repo.url
-      });
-
-      const sourceDefaultBranch = await getDefaultBranch(sourceDetails.owner, sourceDetails.repoName);
-      log.success('Source branch found:', sourceDefaultBranch);
-
-      const targetDefaultBranch = await getDefaultBranch(targetDetails.owner, targetDetails.repoName);
-      log.success('Target branch found:', targetDefaultBranch);
-
-      const { data: sourceCommit } = await octokit.rest.repos.getCommit({
-        owner: sourceDetails.owner,
-        repo: sourceDetails.repoName,
-        ref: sourceDefaultBranch
-      });
-
-      await ensureBranchExists(
-        targetDetails.owner,
-        targetDetails.repoName,
-        targetDefaultBranch,
-        sourceCommit.sha
-      );
-
-      try {
-        if (pushType === 'force' || pushType === 'force-with-lease') {
-          log.info('Performing force push...');
-          await octokit.rest.git.updateRef({
-            owner: targetDetails.owner,
-            repo: targetDetails.repoName,
-            ref: `heads/${targetDefaultBranch}`,
-            sha: sourceCommit.sha,
-            force: true
-          });
-          log.success('Force push completed');
-        } else {
-          log.info('Performing regular merge...');
-          await octokit.rest.repos.merge({
-            owner: targetDetails.owner,
-            repo: targetDetails.repoName,
-            base: targetDefaultBranch,
-            head: sourceCommit.sha,
-            commit_message: `Merge from ${sourceDetails.repo.nickname || sourceDetails.repo.url} using ${pushType} strategy`
-          });
-          log.success('Regular merge completed');
-        }
-
-        const timestamp = new Date().toISOString();
-        await supabaseClient
-          .from('repositories')
-          .update({ 
-            last_sync: timestamp,
-            status: 'synced',
-            last_commit: sourceCommit.sha,
-            last_commit_date: timestamp
-          })
-          .in('id', [sourceRepoId, targetRepoId]);
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: `Push operation completed successfully using ${pushType} strategy`,
-            sha: sourceCommit.sha
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } catch (error) {
-        log.error(`${pushType} operation failed:`, error);
-        throw error;
+      if (updateError) {
+        log.error('Error updating repository:', updateError);
+        throw updateError;
       }
+
+      log.success('Repository updated successfully');
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          details: repoDetails 
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
 
     return new Response(
@@ -226,29 +176,32 @@ serve(async (req) => {
         message: `Git ${type} operation completed successfully`,
         timestamp: new Date().toISOString()
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
 
   } catch (error) {
     log.error('Error in git-operations function:', error);
     
-    const errorResponse = {
-      success: false,
-      error: error.message,
-      details: {
-        status: error.status,
-        name: error.name,
-        message: error.message,
-        response: error.response?.data,
-        documentation_url: error.response?.data?.documentation_url,
-        stack: error.stack
-      }
-    };
-
     return new Response(
-      JSON.stringify(errorResponse),
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        details: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        }
+      }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        },
         status: 500
       }
     );
