@@ -11,7 +11,9 @@ export type Database = {
     Tables: {
       repositories: {
         Row: {
+          branches: Json | null
           created_at: string | null
+          default_branch: string | null
           id: string
           is_master: boolean | null
           last_commit: string | null
@@ -19,12 +21,15 @@ export type Database = {
           last_sync: string | null
           name: string
           nickname: string | null
+          recent_commits: Json | null
           status: string | null
           updated_at: string | null
           url: string
         }
         Insert: {
+          branches?: Json | null
           created_at?: string | null
+          default_branch?: string | null
           id?: string
           is_master?: boolean | null
           last_commit?: string | null
@@ -32,12 +37,15 @@ export type Database = {
           last_sync?: string | null
           name: string
           nickname?: string | null
+          recent_commits?: Json | null
           status?: string | null
           updated_at?: string | null
           url: string
         }
         Update: {
+          branches?: Json | null
           created_at?: string | null
+          default_branch?: string | null
           id?: string
           is_master?: boolean | null
           last_commit?: string | null
@@ -45,6 +53,7 @@ export type Database = {
           last_sync?: string | null
           name?: string
           nickname?: string | null
+          recent_commits?: Json | null
           status?: string | null
           updated_at?: string | null
           url?: string
